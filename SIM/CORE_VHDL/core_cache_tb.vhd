@@ -102,10 +102,31 @@ signal DEBUG_PC_READ : std_logic_vector(31 downto 0);
 -- icache signals instance
 ----------------------------
 -- ram interface
-signal RAM_DATA : std_logic_vector(31 downto 0);
-signal RAM_ADR : std_logic_vector(31 downto 0);
-signal RAM_ADR_VALID : std_logic;
-signal RAM_ACK : std_logic;
+signal I_RAM_DATA : std_logic_vector(31 downto 0);
+signal I_RAM_ADR : std_logic_vector(31 downto 0);
+signal I_RAM_ADR_VALID : std_logic;
+signal I_RAM_ACK : std_logic;
+
+
+----------------------------
+-- dcache signals instance
+----------------------------
+signal D_RAM_ADR : std_logic_vector(31 downto 0);
+signal D_RAM_ADR_VALID          :  std_logic;
+
+signal D_RAM_ACK      :std_logic;
+signal D_RAM_DATA     :std_logic_vector(31 downto 0);
+
+            --write
+
+signal D_RAM_WRITE_ADR   : std_logic_vector(31 downto 0);
+signal D_RAM_WRITE_DATA  : std_logic_vector(31 downto 0);
+signal D_RAM_BYTE_SEL  : std_logic_vector(3  downto 0);
+signal D_RAM_STORE       : std_logic;
+
+signal D_RAM_BUFFER_CACHE_POP : std_logic;
+
+
 
 component core
     port(
@@ -156,6 +177,52 @@ component icache
         RAM_ACK         :   in  std_logic
     );
 end component;
+
+
+component dcache 
+    port(
+        -- global interface
+        clk, reset_n    :   in  std_logic;
+
+        --core interface
+        ADR_SM          :   in  std_logic_vector(31 downto 0);
+        DATA_SM          :   in  std_logic_vector(31 downto 0);
+        ADR_VALID_SM    :   in  std_logic;  --not sure if useful, as we have load and store. If we combine them, then useful
+        LOAD_SM         :   in  std_logic;
+        STORE_SM        :   in  std_logic;
+        SIZE_SM         :   in  std_logic_vector(3 downto 0);
+
+        DATA_SC         :   out     std_logic_vector(31 downto 0);
+        STALL_SC        :   out     std_logic;
+
+
+        -- buffer cache interface
+
+
+
+        --bus wrapper interface
+
+            --read
+
+            RAM_ADR : out std_logic_vector(31 downto 0);
+            RAM_ADR_VALID          : out  std_logic;
+
+            RAM_ACK      : in std_logic;
+            RAM_DATA     : in std_logic_vector(31 downto 0);
+
+            --write
+
+            RAM_WRITE_ADR       : out std_logic_vector(31 downto 0);
+            RAM_WRITE_DATA      : out std_logic_vector(31 downto 0);
+            RAM_WRITE_BYTE_SEL  : out std_logic_vector(3  downto 0);
+            RAM_STORE           : out std_logic;
+
+            RAM_BUFFER_CACHE_POP : in std_logic
+
+
+    );
+end component;
+
 
 -- Simulation 
 constant NCYCLES : integer := 100000000; 
@@ -221,11 +288,42 @@ icache_inst: icache
         IC_STALL_SI,
 
         -- ram interface
-        RAM_DATA,
-        RAM_ADR,
-        RAM_ADR_VALID,
-        RAM_ACK
+        I_RAM_DATA,
+        I_RAM_ADR,
+        I_RAM_ADR_VALID,
+        I_RAM_ACK
     );
+
+
+dcache_inst: dcache
+    port map (
+        clk,reset_n,
+
+        MCACHE_ADR_SM,
+        MCACHE_DATA_SM,
+        MCACHE_ADR_VALID_SM,
+        MCACHE_LOAD_SM,
+        MCACHE_STORE_SM,
+        byt_sel,
+
+        MCACHE_RESULT_SM,
+        MCACHE_STALL_SM,
+
+
+        D_RAM_ADR,
+        D_RAM_ADR_VALID,
+        D_RAM_ACK,
+        D_RAM_DATA,
+
+        D_RAM_WRITE_ADR,
+        D_RAM_WRITE_DATA,
+        D_RAM_BYTE_SEL,
+        D_RAM_STORE,
+
+        D_RAM_BUFFER_CACHE_POP
+
+        );
+
 
 clk_gen : process
 variable r0 : integer;
@@ -305,64 +403,82 @@ begin
     end if;
 end process;
 
-ram : process (clk, RAM_ADR, RAM_ADR_VALID)
+ram : process (clk, I_RAM_ADR, I_RAM_ADR_VALID)
 
 variable adr_int : integer; 
 variable inst_int : integer; 
-variable intermed : signed(RAM_ADR'range); 
+variable intermed : signed(I_RAM_ADR'range); 
 variable transf_cpt : integer;
 
 begin
-    if RAM_ADR_VALID = '1' then
-        RAM_ACK <= '1' after RAM_LATENCY;
+    if I_RAM_ADR_VALID = '1' then
+        I_RAM_ACK <= '1' after RAM_LATENCY;
         transf_cpt := 0;
     end if;
 
-    if RAM_ACK = '1' and rising_edge(clk) then -- 1 word per cycle
-        intermed    := signed(RAM_ADR); 
+    if I_RAM_ACK = '1' and rising_edge(clk) then -- 1 word per cycle
+        intermed    := signed(I_RAM_ADR); 
         adr_int     := to_integer(intermed) + 4 * transf_cpt;
         inst_int    := read_mem(adr_int);
 
-        RAM_DATA <= std_logic_vector(to_signed(inst_int, 32));
+        I_RAM_DATA <= std_logic_vector(to_signed(inst_int, 32));
         transf_cpt := transf_cpt + 1;
 
         if transf_cpt = ICACHE_WIDTH + 1 then
-            RAM_ACK <= '0';
+            I_RAM_ACK <= '0';
         end if;
     end if;
 end process; 
 
 
-dcache : process(clk, MCACHE_ADR_VALID_SM, MCACHE_STORE_SM, MCACHE_LOAD_SM, MCACHE_DATA_SM, MCACHE_ADR_SM, byt_sel)
+dcache_ram : process(clk, D_RAM_ADR_VALID, D_RAM_ADR, D_RAM_WRITE_ADR, D_RAM_WRITE_DATA, D_RAM_BYTE_SEL, D_RAM_STORE)
 variable read0      : integer; -- ignore 
-variable adr_u      : signed(MCACHE_ADR_SM'range); 
+variable adr_u      : signed(D_RAM_ADR'range);
+variable adr_write  : signed(D_RAM_WRITE_ADR'range);
 variable adr_int    : integer := 0;
-variable data_u     : signed(MCACHE_DATA_SM'range);
+variable adr_write_int : integer := 0;
+variable data_u     : signed(D_RAM_WRITE_DATA'range);
 variable data_int   : integer := 0;
-variable byt_sel_u  : unsigned(byt_sel'range);
+variable byt_sel_u  : unsigned(D_RAM_BYTE_SEL'range);
 variable byt_sel_i  : integer := 0;
+variable transf_cpt : integer;
+variable res_data   : integer;
+
 begin 
-    adr_u       := signed(MCACHE_ADR_SM);
+    adr_u       := signed(D_RAM_ADR);
+    adr_write   := signed(D_RAM_WRITE_ADR);
     adr_int     := to_integer(adr_u);
-    data_u      := signed(MCACHE_DATA_SM);
+    adr_write_int := to_integer(adr_write);
+    data_u      := signed(D_RAM_WRITE_DATA);
     data_int    := to_integer(data_u);
-    byt_sel_u   := unsigned(byt_sel);
+    byt_sel_u   := unsigned(D_RAM_BYTE_SEL);
     byt_sel_i   := to_integer(byt_sel_u);
 
-    if reset_n = '0' then 
-    -- hoping to find a better solution to avoid not wanted mem access
-    elsif falling_edge(clk) then 
-        if MCACHE_ADR_VALID_SM = '1' then 
-            if MCACHE_STORE_SM = '1' then  
-                read0 := write_mem(adr_int, data_int, byt_sel_i, dtime);
-            elsif MCACHE_LOAD_SM = '1' then 
-                MCACHE_RESULT_SM <= std_logic_vector(to_signed(read_mem(adr_int), 32));
-            else 
-                assert false report "Adr mem access valid but no command" severity error; 
-            end if; 
-        end if; 
-    end if; 
 
+    if D_RAM_STORE = '1' then
+        D_RAM_BUFFER_CACHE_POP <= '1' after RAM_LATENCY;
+    end if;
+
+    if D_RAM_ADR_VALID <= '1' then
+        D_RAM_ACK <= '1' after RAM_LATENCY;
+        transf_cpt := 0;
+    end if;
+
+    if rising_edge(clk) then
+        if D_RAM_BUFFER_CACHE_POP = '1' then
+            read0 := write_mem(adr_write_int, data_int, byt_sel_i, dtime);
+            D_RAM_BUFFER_CACHE_POP <= '0';
+        end if;
+
+        if D_RAM_ACK = '1' then
+            res_data := read_mem(adr_int);
+            transf_cpt := transf_cpt + 1;
+
+            if transf_cpt = DCACHE_WIDTH + 1 then
+                D_RAM_ACK <= '0';
+            end if;
+        end if;
+    end if;
 end process;
 
 end simu;

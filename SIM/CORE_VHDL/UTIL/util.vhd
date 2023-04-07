@@ -13,6 +13,8 @@ package util is
     constant ICACHE_WAYS            :   integer :=  256;
     constant ICACHE_WIDTH           :   integer :=  8;
 
+    constant DCACHE_WIDTH           :   integer :=  4;
+
     constant kernel_adr : std_logic_vector(31 downto 0) := x"F0000000"; 
     constant one_ext_32 : std_logic_vector(31 downto 0) := x"00000001";
 

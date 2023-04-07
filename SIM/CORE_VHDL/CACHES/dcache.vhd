@@ -13,6 +13,7 @@ entity dcache is
         ADR_VALID_SM    :   in  std_logic; 	--not sure if useful, as we have load and store. If we combine them, then useful
         LOAD_SM			:   in  std_logic;
         STORE_SM		:   in  std_logic;
+        SIZE_SM         :   in  std_logic_vector(3 downto 0);
 
         DATA_SC			:	out 	std_logic_vector(31 downto 0);
         STALL_SC		:	out 	std_logic;
@@ -34,18 +35,12 @@ entity dcache is
 
             --write
 
-            RAM_WRITE_ADR   : out std_logic_vector(31 downto 0);
-            RAM_WRITE_DATA  : out std_logic_vector(31 downto 0);
-            RAM_WRITE_SIZE  : out std_logic_vector(1  downto 0);
-            RAM_STORE       : out std_logic;
+            RAM_WRITE_ADR       : out std_logic_vector(31 downto 0);
+            RAM_WRITE_DATA      : out std_logic_vector(31 downto 0);
+            RAM_WRITE_BYTE_SEL  : out std_logic_vector(3  downto 0);
+            RAM_STORE           : out std_logic;
 
             RAM_BUFFER_CACHE_POP : in std_logic
-
-
-
-
-
-
 
 
 	);
@@ -89,25 +84,25 @@ signal w1_data_res: std_logic_vector(31 downto 0);
 signal data_res: std_logic_vector(31 downto 0);
 
 component buffer_cache
-    port(        clk, reset_n : in std_logic;
+    port (
+        -- global interface
+        clk, reset_n : in std_logic;
 
         -- fifo commands & status
         PUSH, POP : in std_logic;
         EMPTY, FULL : out std_logic;
 
-        -- fifo input data
+        -- fifo input data      TODO : remove LOAD and change all indexes
         DATA_C : in std_logic_vector(31 downto 0);
         ADR_C : in std_logic_vector(31 downto 0);
-        STORE_C, LOAD_C : in std_logic; -- might be simplified to a single signal
-        SIZE_C : in std_logic_vector(1 downto 0); -- 0b10 for byte  
-                                                  -- 0b01 for short
-                                                  -- 0b00 for word
+        STORE_C : in std_logic;
+        BYTE_SEL_C : in std_logic_vector(3 downto 0); 
 
         -- output
         DATA_BC : out std_logic_vector(31 downto 0);
         ADR_BC : out std_logic_vector(31 downto 0);
-        STORE_BC, LOAD_BC : out std_logic; 
-        SIZE_BC : out std_logic_vector(1 downto 0)
+        STORE_BC : out std_logic; 
+        BYTE_SEL_BC : out std_logic_vector(3 downto 0)
     );
 end component;
 
@@ -118,16 +113,14 @@ signal buffer_EMPTY, buffer_FULL : std_logic;
         -- fifo input data
 signal buffer_DATA_C : std_logic_vector(31 downto 0);
 signal buffer_ADR_C : std_logic_vector(31 downto 0);
-signal buffer_STORE_C, buffer_LOAD_C : std_logic;
-signal buffer_SIZE_C : std_logic_vector(1 downto 0); -- 0b10 for byte  
-                                                  -- 0b01 for short
-                                                  -- 0b00 for word
+signal buffer_STORE_C : std_logic;
+signal buffer_BYTE_SEL_C : std_logic_vector(3 downto 0); 
 
         -- fifo output data
 signal buffer_DATA_BC : std_logic_vector(31 downto 0);
 signal buffer_ADR_BC :  std_logic_vector(31 downto 0);
-signal buffer_STORE_BC, buffer_LOAD_BC : std_logic; 
-signal buffer_SIZE_BC : std_logic_vector(1 downto 0);
+signal buffer_STORE_BC : std_logic; 
+signal buffer_BYTE_SEL_BC : std_logic_vector(3 downto 0);
 
 
 
@@ -142,15 +135,22 @@ begin
 --buffer cache to ram/wrapper
 
 buffer_cache_inst: buffer_cache port map(clk,reset_n,buffer_PUSH, buffer_POP, buffer_EMPTY, buffer_FULL, 
-    buffer_DATA_C, buffer_ADR_C, buffer_STORE_C, buffer_LOAD_C, buffer_SIZE_C, 
-    buffer_DATA_BC, buffer_ADR_BC, buffer_STORE_BC, buffer_LOAD_BC, buffer_SIZE_BC);
+    buffer_DATA_C, buffer_ADR_C, buffer_STORE_C, buffer_BYTE_SEL_C, 
+    buffer_DATA_BC, buffer_ADR_BC, buffer_STORE_BC, buffer_BYTE_SEL_BC);
 
 RAM_WRITE_ADR  <= buffer_ADR_BC;
 RAM_WRITE_DATA <= buffer_DATA_BC;
-RAM_WRITE_SIZE <= buffer_SIZE_BC;
+RAM_WRITE_BYTE_SEL <= buffer_BYTE_SEL_BC;
 RAM_STORE      <= not buffer_EMPTY;
 
 buffer_POP     <= RAM_BUFFER_CACHE_POP;
+
+
+buffer_DATA_C <= DATA_SM;
+buffer_ADR_C <= ADR_SM;
+buffer_STORE_C <= STORE_SM;
+buffer_BYTE_SEL_BC <= SIZE_SM;
+
 
 -- read to ram
 
@@ -218,6 +218,7 @@ fsm_output: process(clk, EP, hit,ADR_VALID_SM,RAM_ACK,RAM_DATA)
 variable cpt : integer;
 begin
     RAM_ADR_VALID <=  '0';
+    buffer_PUSH <= '0';
 	case EP is
 		when idle =>
 			if LOAD_SM = '1' and ADR_VALID_SM = '1'then -- read
@@ -241,8 +242,11 @@ begin
                     RAM_ADR_VALID <= '0';
 
 				end if;
-			else --on a write, we always stay idle
+			elsif ADR_VALID_SM = '1' then --on a write, we always stay idle
 				EF <= idle;
+                buffer_PUSH <= '1';
+            else
+                EF <= idle;
 			end if;
 
 		when wait_mem =>

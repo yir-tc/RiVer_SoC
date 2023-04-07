@@ -16,23 +16,21 @@ entity buffer_cache is
         -- fifo input data      TODO : remove LOAD and change all indexes
         DATA_C : in std_logic_vector(31 downto 0);
         ADR_C : in std_logic_vector(31 downto 0);
-        STORE_C, LOAD_C : in std_logic; -- might be simplified to a single signal
-        SIZE_C : in std_logic_vector(1 downto 0); -- 0b10 for byte  
-                                                  -- 0b01 for short
-                                                  -- 0b00 for word
+        STORE_C : in std_logic;
+        BYTE_SEL_C : in std_logic_vector(3 downto 0); 
 
         -- output
         DATA_BC : out std_logic_vector(31 downto 0);
         ADR_BC : out std_logic_vector(31 downto 0);
-        STORE_BC, LOAD_BC : out std_logic; 
-        SIZE_BC : out std_logic_vector(1 downto 0)
+        STORE_BC : out std_logic; 
+        BYTE_SEL_BC : out std_logic_vector(3 downto 0)
     );
 end buffer_cache;
 
 architecture archi of buffer_cache is
 
--- buffer cache is simply a FIFO of with 68 bits
-type t_fifo_data is array (0 to depth-1) of std_logic_vector(67 downto 0);
+-- buffer cache is simply a FIFO of with 69 bits
+type t_fifo_data is array (0 to depth-1) of std_logic_vector(68 downto 0);
 signal data : t_fifo_data;
 
 signal wr_index : integer range 0 to depth-1;
@@ -74,21 +72,19 @@ begin
                 end if;
 
                 if (PUSH='1' and f_full='0') then
-                    data(wr_index)(67 downto 36) <= DATA_C;
-                    data(wr_index)(35 downto 4) <= ADR_C;
-                    data(wr_index)(3) <= STORE_C;
-                    data(wr_index)(2) <= LOAD_C;
-                    data(wr_index)(1 downto 0) <= SIZE_C;
+                    data(wr_index)(68 downto 37) <= DATA_C;
+                    data(wr_index)(36 downto 5) <= ADR_C;
+                    data(wr_index)(4) <= STORE_C;
+                    data(wr_index)(3 downto 0) <= BYTE_SEL_C;
                 end if;
             end if;
         end if;
     end process;
 
-    DATA_BC     <= data(rd_index)(67 downto 36);
-    ADR_BC      <= data(rd_index)(35 downto 4);
-    STORE_BC    <= data(rd_index)(3);
-    LOAD_BC     <= data(rd_index)(2);
-    SIZE_BC     <= data(rd_index)(1 downto 0);
+    DATA_BC     <= data(rd_index)(68 downto 37);
+    ADR_BC      <= data(rd_index)(36 downto 5);
+    STORE_BC    <= data(rd_index)(4);
+    BYTE_SEL_BC  <= data(rd_index)(3 downto 0);
 
     f_full  <= '1' when count = depth else '0';
     f_empty <= '1' when count = 0 else '0';
