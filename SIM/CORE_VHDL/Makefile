@@ -13,7 +13,7 @@ COMPONENTS = \
 	REG/reg \
 	WBK/wbk WBK/x2_multiplier \
 	CSR/csr \
-	CACHES/icache CACHES/buffer_cache CACHES/dcache \
+	CACHES/icache CACHES/buffer_cache CACHES/dcache CACHES/iprefetcher \
 	tb/tb_buff_cache
 TB=core_cache_tb
 MODS=$(COMPONENTS) $(TB)

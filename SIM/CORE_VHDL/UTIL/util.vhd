@@ -11,7 +11,7 @@ package util is
     constant RAM_LATENCY            :   time    := 80 ns;
 
     constant ICACHE_WAYS            :   integer :=  256;
-    constant ICACHE_WIDTH           :   integer :=  8;
+    constant ICACHE_WIDTH           :   integer :=  4;
 
     constant kernel_adr : std_logic_vector(31 downto 0) := x"F0000000"; 
     constant one_ext_32 : std_logic_vector(31 downto 0) := x"00000001";
