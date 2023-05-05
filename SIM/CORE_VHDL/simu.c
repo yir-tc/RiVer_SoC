@@ -1,9 +1,12 @@
 #pragma GCC push_options
 #pragma GCC optimize ("O0")
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+
 #include "elfio.h"
+#include "ram.h"
 
 int start_pc;
 int *instruction;
@@ -14,8 +17,6 @@ int good_adr = 0;
 int bad_adr = 0; 
 int exception_adr = 0; 
 
-int*** ram[256];
-
 //riscof parameters
 int riscof = 0 ;
 int begin_signature = 0 ;
@@ -24,68 +25,6 @@ int signature_size = 0 ;
 int rvtest_code_end = 0;
 int **signature_value ;
 FILE *riscof_signature ;
-
-int read_mem(int a) {
-    int addr1, addr2, addr3, addr4;
-    int adr = a;
-    a = a >> 2; 
-    addr1 = a & 0xFF; 
-    addr2 = (a >> 8) & 0xFF; 
-    addr3 = (a >> 16) & 0xFF; 
-    addr4 = (a >> 24) & 0xFF; 
-    if(ram[addr1] && ram[addr1][addr2] && ram[addr1][addr2][addr3]) {
-        // printf("[read mem] : at @ %x data %x\n", adr, ram[addr1][addr2][addr3][addr4]);
-        return ram[addr1][addr2][addr3][addr4];
-    }
-    return 0; 
-}
-
-int write_mem(int a, int data, int byt_sel, int time) {
-    int addr1, addr2, addr3, addr4;
-    int tmp = 0; 
-    int mask = 0;
-    int adr = a;  
-    int dataw; 
-    a = a >> 2; 
-    addr1 = a & 0xFF; 
-    addr2 = (a >> 8) & 0xFF; 
-    addr3 = (a >> 16) & 0xFF; 
-    addr4 = (a >> 24) & 0xFF; 
-    if (!ram[addr1]) ram[addr1] = calloc(256, sizeof(int*));
-    if (!ram[addr1][addr2]) ram[addr1][addr2] = calloc(256, sizeof(int*));
-    if (!ram[addr1][addr2][addr3]) ram[addr1][addr2][addr3] = calloc(256, sizeof(int));
-
-    switch(byt_sel) {
-        // store byte
-        case 1:     dataw = data            & ~(0xFFFFFF00);    break;
-        case 2:     dataw = (data << 8)     & ~(0xFFFF00FF);    break;
-        case 4:     dataw = (data << 16)    & ~(0xFF00FFFF);    break;
-        case 8:     dataw = (data << 24)    & ~(0x00FFFFFF);    break;
-        // store half word 
-        case 3:     dataw = data            & ~(0xFFFF0000);    break;
-        case 12:    dataw = (data << 16)    & ~(0x0000FFFF);    break;
-        // store word
-        case 15:    dataw = data;                               break;
-
-        default:    dataw = 0;                                  break; 
-    }
-
-    if(byt_sel & 0x1) 
-        mask |= 0xFF; 
-    if(byt_sel & 0x2)
-        mask |= 0xFF00;
-    if(byt_sel & 0x4)
-        mask |= 0xFF0000;
-    if(byt_sel & 0x8)
-        mask |= 0xFF000000;
-
-    tmp = ram[addr1][addr2][addr3][addr4];
-    tmp &= ~mask; 
-    tmp |= dataw; 
-    ram[addr1][addr2][addr3][addr4] = tmp;
-    printf("%d ns [write mem] : at @ %x writting %x\n", time, adr, dataw);
-    return 0; 
-}   
 
 int end_simulation(int result, int riscof_enable) {
     if(!riscof_enable)
@@ -125,9 +64,7 @@ int get_end_riscof(int z) {
     return rvtest_code_end;
 }
 
-
 extern int ghdl_main(int argc, char const* argv[]);
-
 
 int main(int argc, char const* argv[]) {
     
