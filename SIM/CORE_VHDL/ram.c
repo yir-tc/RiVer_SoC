@@ -29,12 +29,12 @@ int read_mem(unsigned int addr) {
     }
 
     #ifdef _RAM_DEBUG_READ
-        printf("[read mem] : at @ %x data %x\n", addr, ram[addr1][addr2][addr3][addr4]);
+        printf("[read mem] : at @ %08x data %08x\n", addr << 2, ram[addr1][addr2][addr3][addr4]);
     #endif
     return ram[addr1][addr2][addr3][addr4];
 }
 
-int write_mem(unsigned int addr, int data, int byt_sel, int time) {
+int write_mem(unsigned int addr, int data, unsigned int strobe, unsigned int time) {
     unsigned int addr1, addr2, addr3, addr4;
     int tmp = 0; 
     int mask = 0;
@@ -49,7 +49,7 @@ int write_mem(unsigned int addr, int data, int byt_sel, int time) {
         init_mem(addr1, addr2, addr3);
     }
 
-    switch(byt_sel) {
+    switch(strobe) {
         // store byte
         case 1:     dataw = data            & ~(0xFFFFFF00);    break;
         case 2:     dataw = (data << 8)     & ~(0xFFFF00FF);    break;
@@ -64,13 +64,13 @@ int write_mem(unsigned int addr, int data, int byt_sel, int time) {
         default:    dataw = 0;                                  break; 
     }
 
-    if(byt_sel & 0x1) 
+    if(strobe & 0x1) 
         mask |= 0xFF; 
-    if(byt_sel & 0x2)
+    if(strobe & 0x2)
         mask |= 0xFF00;
-    if(byt_sel & 0x4)
+    if(strobe & 0x4)
         mask |= 0xFF0000;
-    if(byt_sel & 0x8)
+    if(strobe & 0x8)
         mask |= 0xFF000000;
 
     tmp = ram[addr1][addr2][addr3][addr4];
@@ -79,7 +79,7 @@ int write_mem(unsigned int addr, int data, int byt_sel, int time) {
     ram[addr1][addr2][addr3][addr4] = tmp;
 
     #ifdef _RAM_DEBUG_WRITE
-        printf("%d ns [write mem] : at @ %x writting %x\n", time, addr, dataw);
+        printf("%u ns [write mem] : at @ %08X writting %08x\n", time, addr << 2, dataw);
     #endif
 
     return 0; 

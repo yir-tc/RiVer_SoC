@@ -12,6 +12,6 @@
 extern int*** ram[256];
 
 int read_mem(unsigned int addr);
-int write_mem(unsigned int addr, int data, int byt_sel, int time);
+int write_mem(unsigned int addr, int data, unsigned int strobe, unsigned int time);
 
 #endif
