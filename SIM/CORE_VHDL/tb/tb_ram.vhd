@@ -1,5 +1,6 @@
 library ieee; 
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity tb_ram is 
 end entity tb_ram; 
@@ -39,6 +40,9 @@ signal RRESP : std_logic_vector(1 downto 0);
 signal RVALID : std_logic;
 signal RREADY : std_logic;
 
+signal test_addr : std_logic_vector(31 downto 0);
+signal test_data : std_logic_vector(31 downto 0);
+
 begin 
     ram: ram_axi_lite port map (
         clk, reset_n,
@@ -50,25 +54,52 @@ begin
     reset_n <= '0', '1' after 6 ns; 
 
     tb: process is
+    procedure ram_axi_read_word(
+        signal address : in std_logic_vector(31 downto 0);
+        signal data    : out std_logic_vector(31 downto 0)) is
     begin
-        wait for 20 ns;
-
-        ARADDR <= x"deadbeef";
+        -- Send address
+        ARADDR <= address;
         ARVALID <= '1';
 
+        -- RAM should wait 1 cycle (idle -> ack) then 8 cycles (ack -> ack) before setting ARREADY
         wait for 90 ns;
         assert ARREADY = '1' report "RAM didn't set ARREADY" severity failure;
-        
-        RREADY <= '1';
 
+        -- We're ready to get data
+        ARVALID <= '0';
+        RREADY <= '1';
+        
         wait for 10 ns;
         assert RVALID = '1' report "RAM didn't set RVALID" severity failure;
         assert RRESP = "00" report "RAM returned an error" severity failure;
-        assert RDATA = x"41414141" report "RAM didn't send valid data" severity failure;
+        
+        data <= RDATA;
+        RREADY <= '0';
 
+        wait for 0 ns; -- because VHDL is retarded
+    end procedure;
+    
+    begin
         wait for 20 ns;
-        assert (RVALID = '0' and ARREADY = '0') report "RAM didn't reset RVALID/ARREADY" severity failure;
+        ram_axi_read_word(test_addr, test_data);
+        assert test_data = x"41414141" report "RAM returned invalid data" severity failure;
 
+        test_addr <= std_logic_vector(unsigned(test_addr) + 1);
+        wait for 10 ns;
+
+        test_data <= x"00000000";
+        ram_axi_read_word(test_addr, test_data);
+        assert test_data = x"41414141" report "RAM returned invalid data" severity failure;
+
+        test_addr <= std_logic_vector(unsigned(test_addr) + 1);
+        wait for 10 ns;
+
+        test_data <= x"00000000";
+        ram_axi_read_word(test_addr, test_data);
+        assert test_data = x"41414141" report "RAM returned invalid data" severity failure;
+
+        wait for 10 ns;
         assert false report "End of test" severity failure;
     end process;
 end architecture;

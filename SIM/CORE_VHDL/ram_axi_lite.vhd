@@ -91,7 +91,14 @@ begin
                 RVALID <= '1';
 
                 if RREADY = '1' then
+                    -- Skip IDLE state if we already received another request
+                    --if ARVALID = '1' then
+                    --    RVALID <= '0';
+                    --    cycles := 0;
+                    --    EF <= ack;
+                    --else
                     EF <= idle;
+                    --end if;
                 end if;
         end case;
         dbg_cycles <= std_logic_vector(to_unsigned(cycles, 4));
