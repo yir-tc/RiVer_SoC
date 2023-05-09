@@ -22,9 +22,9 @@ COMPONENTS = \
 	REG/reg \
 	WBK/wbk WBK/x2_multiplier \
 	CSR/csr \
-	ram_axi_lite \
+	ram_axi_lite interface_axi_lite \
 	CACHES/icache CACHES/buffer_cache CACHES/dcache CACHES/iprefetcher \
-	tb/tb_buff_cache tb/tb_ram
+	tb/tb_buff_cache tb/tb_ram tb/tb_interface
 TB=core_cache_tb
 MODS=$(COMPONENTS) $(TB)
 SOURCES=$(addsuffix .vhd, $(MODS))
@@ -32,7 +32,7 @@ OBJ=$(addsuffix .o, $(addprefix $(BUILD)/, $(notdir $(MODS))))
 SW_DIR=../../SOFT
 TEST=$(SW_DIR)/TESTS/I/test_add.s
 
-all: tb_ram #run warning
+all: tb_interface #run warning
 
 run: $(TB) kernel
 	cp $(SW_DIR)/app.ld kernel sim/
@@ -49,6 +49,9 @@ tb_buff_cache: $(BUILD)/tb_buff_cache.o
 
 tb_ram: $(BUILD)/tb_ram.o $(BUILD)/ram.o
 	${GHDL} -e ${GHDLFLAGS} -Wl,$(BUILD)/ram.o tb_ram
+
+tb_interface: $(BUILD)/tb_interface.o $(BUILD)/ram.o
+	${GHDL} -e ${GHDLFLAGS} -Wl,$(BUILD)/ram.o tb_interface
 
 $(BUILD)/simu.o: simu.c
 	${CC} ${CFLAGS} -c -o $(BUILD)/simu.o simu.c 

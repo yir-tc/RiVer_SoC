@@ -3,6 +3,8 @@
 *shifter_tb
 *a.out
 *core_tb
+*core_cache_tb
+*tb_ram
 *.vcd
 *.txt
 *.text

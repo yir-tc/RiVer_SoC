@@ -81,8 +81,6 @@ begin
     begin 
         if reset_n = '0' then
             EP <= idle;
-            -- A3.1.2
-            -- RVALID <= '0'; put RVALID to x wtf ?
         elsif rising_edge(clk) then 
             EP <=  EF; 
         end if; 
