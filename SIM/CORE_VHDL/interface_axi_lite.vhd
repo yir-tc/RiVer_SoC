@@ -20,7 +20,7 @@ entity interface_axi_lite is
         DI_STROBE : in std_logic_vector(3 downto 0);
         DI_VALID : in std_logic;
         DI_WRITE : in std_logic;
-        DI_READ_DATA : out std_logic;
+        DI_READ_DATA : out std_logic_vector(31 downto 0);
         
         DI_DONE : out std_logic;
         DI_ACK : in std_logic;
@@ -63,7 +63,7 @@ architecture behavior of interface_axi_lite is
 
 -- Interface FSM
 type state is (idle, read_wait, read_transfer,
-                     write_wait, write_resp);
+                     write_addr_wait, write_data_wait, write_resp);
 signal EP, EF : state; 
 
 -- Debug signals
@@ -94,6 +94,9 @@ begin
                                    II_ACK, DI_ACK)
     
     variable address : std_logic_vector(31 downto 0);
+    variable data : std_logic_vector(31 downto 0);
+    variable strobe : std_logic_vector(3 downto 0);
+    variable instr : boolean; -- weither the read is instruction or data;
 
     begin
         -- no idea why it's not working outside of this process
@@ -118,11 +121,20 @@ begin
                 -- for data at the same time)
                 if II_VALID = '1' then
                     address := II_ADDR;
+                    instr   := true;
+
                     EF <= read_wait;
                 elsif DI_VALID = '1' then
                     if DI_WRITE = '1' then
-                        EF <= write_wait;
+                        address := DI_ADDR;
+                        data    := DI_WRITE_DATA;
+                        strobe  := DI_STROBE;
+
+                        EF <= write_addr_wait;
                     elsif DI_WRITE = '0' then
+                        address := DI_ADDR;
+                        instr   := false;
+
                         EF <= read_wait;
                     end if;
                 end if;
@@ -139,19 +151,51 @@ begin
                 if RVALID = '1' then
                     -- TODO: should trigger exception when RRESP != RESP_OKAY
                     RREADY  <= '0';
-                    II_DATA <= RDATA;
-                    II_DONE <= '1';
+
+                    if instr then
+                        II_DATA <= RDATA;
+                        II_DONE <= '1';
+                    else
+                        DI_READ_DATA <= RDATA;
+                        DI_DONE <= '1';
+                    end if;
+
                     EF      <= idle;
                 end if;
-            when write_wait =>
+            when write_addr_wait =>
+                AWADDR <= address;
+                AWVALID <= '1';
+
+                if AWREADY = '1' then
+                    AWVALID <= '0';
+                    EF <= write_data_wait;
+                end if;
+            when write_data_wait =>
+                -- maybe do this in write_addr_wait ?
+                WDATA <= data;
+                WSTRB <= strobe;
+                WVALID <= '1';
+                
+                if WREADY = '1' then
+                    WVALID <= '0';
+                    BREADY <= '1';
+                    EF <= write_resp;
+                end if;
             when write_resp =>
+                if BVALID = '1' then
+                    BREADY  <= '0';
+                    DI_DONE <= '1';
+                    -- TODO: handle the BRESP
+                    EF <= idle;
+                end if;
         end case;
     end process;
 
     dbg_st <= "000" when EP = idle else
                 "001" when EP = read_wait else
                 "010" when EP = read_transfer else
-                "011" when EP = write_wait else
-                "100" when EP = write_resp else
+                "011" when EP = write_addr_wait else
+                "100" when EP = write_data_wait else
+                "101" when EP = write_resp else
                 "111";
 end architecture;

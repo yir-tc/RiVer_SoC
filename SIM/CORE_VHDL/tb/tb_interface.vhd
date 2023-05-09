@@ -62,7 +62,7 @@ component interface_axi_lite is
         DI_STROBE : in std_logic_vector(3 downto 0);
         DI_VALID : in std_logic;
         DI_WRITE : in std_logic;
-        DI_READ_DATA : out std_logic;
+        DI_READ_DATA : out std_logic_vector(31 downto 0);
         
         DI_DONE : out std_logic;
         DI_ACK : in std_logic;
@@ -118,7 +118,7 @@ signal DI_WRITE_DATA : std_logic_vector(31 downto 0);
 signal DI_STROBE : std_logic_vector(3 downto 0);
 signal DI_VALID : std_logic;
 signal DI_WRITE : std_logic;
-signal DI_READ_DATA : std_logic;
+signal DI_READ_DATA : std_logic_vector(31 downto 0);
 
 signal DI_DONE : std_logic;
 signal DI_ACK : std_logic;
@@ -188,9 +188,34 @@ begin
         wait on II_DONE for 150 ns;
         assert II_DATA = x"41414141" report "RAM returned invalid data" severity failure;
         II_ACK <= '1';
+        II_VALID <= '0';
 
         wait for 15 ns;
         assert II_DONE = '0' report "Couldn't reset acknowledgment" severity failure;
+
+        DI_ADDR <= x"0000aba0";
+        DI_WRITE <= '1';
+        DI_WRITE_DATA <= x"deadbeef";
+        DI_STROBE <= "1111";
+        DI_VALID <= '1';
+
+        wait on DI_DONE for 150 ns;
+        DI_ACK <= '1';
+        DI_VALID <= '0';
+        
+        wait for 15 ns;
+        assert DI_DONE = '0' report "Couldn't reset acknowledgment" severity failure;
+
+        DI_ADDR <= x"0000aba0";
+        DI_WRITE <= '0';
+        DI_VALID <= '1';
+
+        wait on DI_DONE for 150 ns;
+        assert DI_READ_DATA = x"deadbeef" report "RAM returned invalid data" severity failure;
+        DI_ACK <= '1';
+
+        wait for 15 ns;
+        assert DI_DONE = '0' report "Couldn't reset acknowledgment" severity failure;
 
         wait for 10 ns;
         assert false report "End of test" severity failure;
