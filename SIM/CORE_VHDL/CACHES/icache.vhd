@@ -29,6 +29,9 @@ end icache;
 architecture archi of icache is 
 
 component iprefetcher is 
+    generic (
+        WIDTH : integer := 4
+    );
     port (
         -- general interface
         clk, reset_n : in std_logic;
@@ -48,7 +51,9 @@ component iprefetcher is
         IP_CURR_ID_SC   : out std_logic_vector(27 downto 0); -- address "id": address without offset
         IP_LINE_SC      : out std_logic_vector((WIDTH*32)-1 downto 0); -- instr if addr in fifo and transfer over
 
-        IP_TRANSFER_SC  : out std_logic -- true if addr in fifo and transfer not over
+        IP_TRANSFER_SC  : out std_logic; -- true if addr in fifo and transfer not over
+        
+        P_RESET_TRANSFER : in std_logic
     );
 end component;
 
@@ -74,8 +79,8 @@ signal prefetch_id    : std_logic_vector(27 downto 0);
 signal prefetch_line : std_logic_vector((WIDTH*32)-1 downto 0);
 signal prefetch_stall : std_logic;
 
-signal current_block_id : std_logic_vector(31-N_BITS_OFFSET downto 0);
-signal next_block_id : std_logic_vector(31-N_BITS_OFFSET downto 0);
+signal current_block_id : std_logic_vector(27 downto 0);
+signal next_block_id : std_logic_vector(27 downto 0);
 
 -- address parameters 
 signal adr_tag      :   std_logic_vector((N_BITS_TAG - 1) downto 0);
@@ -110,8 +115,8 @@ adr_tag     <=  ADR_SI(31 downto (N_BITS_OFFSET + N_BITS_WAYS));
 adr_index   <=  ADR_SI((N_BITS_WAYS + N_BITS_OFFSET- 1) downto N_BITS_OFFSET);
 adr_offset  <=  ADR_SI((N_BITS_OFFSET - 1) downto 0);
 
-current_block_id <= ADR_SI(31 downto N_BITS_OFFSET);
-next_block_id <= std_logic_vector(unsigned(current_block_id) + 1);
+current_block_id <= ADR_SI(31 downto 4);
+next_block_id <= std_logic_vector(unsigned(current_block_id) + integer(WIDTH/4));
 
 -- miss detection 
 hit <=  '1' when adr_tag = tags(to_integer(unsigned(adr_index))) and valid(to_integer(unsigned(adr_index))) = '1' else 
@@ -123,13 +128,17 @@ IC_INST_SI  <=  cache_ways(to_integer(unsigned(adr_index)))(to_integer(unsigned(
 IC_STALL_SI <=  not(hit);
 
 -- prefetcher
-prefetcher: iprefetcher port map (
-    clk, prefetch_reset,
-    prefetch_ram_data, prefetch_ram_adr, prefetch_ram_adr_valid, prefetch_ram_ack,
-    prefetch_next_id, prefetch_next_id_valid,
-    prefetch_valid, prefetch_id, prefetch_line, 
-    prefetch_stall
-);
+prefetcher: iprefetcher 
+    generic map (
+        WIDTH
+    )
+    port map (
+        clk, reset_n,
+        prefetch_ram_data, prefetch_ram_adr, prefetch_ram_adr_valid, prefetch_ram_ack,
+        prefetch_next_id, prefetch_next_id_valid,
+        prefetch_valid, prefetch_id, prefetch_line, 
+        prefetch_stall, prefetch_reset
+    );
 
 -- succession des etats 
 fsm_transition : process(clk, reset_n)
@@ -152,10 +161,16 @@ variable current_adr_offset :   std_logic_vector((N_BITS_OFFSET - 1) downto 0);
 variable cpt : integer;
 
 begin 
-    prefetch_reset <= reset_n;
+    prefetch_reset <= '0';
 
     case EP is 
         when idle =>
+            -- prefetch/ram interface
+            prefetch_ram_data <= RAM_DATA;
+            RAM_ADR <= prefetch_ram_adr;
+            RAM_ADR_VALID <= prefetch_ram_adr_valid;
+            prefetch_ram_ack <= RAM_ACK;
+
             -- is the data in the cache ?
             if ADR_VALID_SI = '1' and reset_n = '1' and hit = '0' then 
                 -- no, is the data in the prefetcher ?
@@ -163,10 +178,14 @@ begin
                     -- yes, did the prefetcher finished the transfer ?
                     if prefetch_stall = '0' and prefetch_valid = '1' then
                         -- yes ! fetch one cache line from it
-                        cache_ways(to_integer(unsigned(adr_index)))(0) <= prefetch_line(31 downto 0);
-                        cache_ways(to_integer(unsigned(adr_index)))(1) <= prefetch_line(63 downto 32);
-                        cache_ways(to_integer(unsigned(adr_index)))(2) <= prefetch_line(95 downto 64);
-                        cache_ways(to_integer(unsigned(adr_index)))(3) <= prefetch_line(127 downto 96);
+                        --cache_ways(to_integer(unsigned(adr_index)))(0) <= prefetch_line(31 downto 0);
+                        --cache_ways(to_integer(unsigned(adr_index)))(1) <= prefetch_line(63 downto 32);
+                        --cache_ways(to_integer(unsigned(adr_index)))(2) <= prefetch_line(95 downto 64);
+                        --cache_ways(to_integer(unsigned(adr_index)))(3) <= prefetch_line(127 downto 96);
+                        for i in 0 to WIDTH - 1 loop
+                            cache_ways(to_integer(unsigned(adr_index)))(i) <= prefetch_line((32 * (i + 1)) - 1 downto (32 * i));
+                        end loop;
+                        
                         tags(to_integer(unsigned(adr_index)))          <= adr_tag; 
                         valid(to_integer(unsigned(adr_index)))         <= '1';  
         
@@ -180,39 +199,41 @@ begin
                         EF <= idle;
                     else
                         -- no, lets loop until it does (maybe add another state for this ?)
-                        -- prefetch/ram interface
-                        prefetch_ram_data <= RAM_DATA;
-                        RAM_ADR <= prefetch_ram_adr;
-                        RAM_ADR_VALID <= prefetch_ram_adr_valid;
-                        prefetch_ram_ack <= RAM_ACK;
-
                         dbg_prefetch_start <= '1';
 
                         EF <= idle;
                     end if;
                 else
-                    -- still no, hard miss
-                    EF <= wait_mem;
-                    
-                    -- align address then send it to the RAM
-                    RAM_ADR(31 downto 4)    <=  ADR_SI(31 downto 4);
-                    RAM_ADR(3 downto 0)     <=  "0000";
-                    RAM_ADR_VALID           <=  '1';
-                    
-                    valid_count <= valid_count + 1;
-                    dbg_valid_count <= std_logic_vector(to_signed(valid_count, 8));
-                    dbg_prefetch_start <= '0';
+                    -- is the prefetcher stalling anyway ?
+                    if prefetch_stall = '1' then
+                        -- reset the prefetcher and invalid adress so it doesn't
+                        -- start a transfer while we're also doing one
+                        prefetch_reset <= '1';
+                        prefetch_next_id_valid <= '0';
 
-                    -- save adress parameters for later use
-                    current_adr_tag         :=  ADR_SI(31 downto (N_BITS_WAYS + N_BITS_OFFSET));
-                    current_adr_index       :=  ADR_SI((N_BITS_WAYS + N_BITS_OFFSET - 1) downto N_BITS_OFFSET);
-                    
-                    -- reset the prefetcher and invalid adress so it doesn't
-                    -- start a transfer while we're also doing one
-                    prefetch_reset <= '0';
-                    prefetch_next_id_valid <= '0';
+                        -- the reset will put the prefetcher in a state
+                        -- where he can only go out if RAM acknowledged the
+                        -- ongoing request
+                        EF <= idle;
+                    else
+                        -- still no, hard miss
+                        EF <= wait_mem;
+                        
+                        -- align address then send it to the RAM
+                        RAM_ADR(31 downto 4)    <=  ADR_SI(31 downto 4);
+                        RAM_ADR(3 downto 0)     <=  "0000";
+                        RAM_ADR_VALID           <=  '1';
+                        
+                        valid_count <= valid_count + 1;
+                        dbg_valid_count <= std_logic_vector(to_signed(valid_count, 8));
+                        dbg_prefetch_start <= '0';
 
-                    cpt := 0;
+                        -- save adress parameters for later use
+                        current_adr_tag         :=  ADR_SI(31 downto (N_BITS_WAYS + N_BITS_OFFSET));
+                        current_adr_index       :=  ADR_SI((N_BITS_WAYS + N_BITS_OFFSET - 1) downto N_BITS_OFFSET);
+                        
+                        cpt := 0;
+                    end if;
                 end if;
             else
                 -- yes, hit!
@@ -222,13 +243,6 @@ begin
                         prefetch_next_id <= next_block_id;
                         prefetch_next_id_valid <= '1';
                     end if;
-
-                    -- prefetch/ram interface
-                    prefetch_ram_data <= RAM_DATA;
-                    RAM_ADR <= prefetch_ram_adr;
-                    RAM_ADR_VALID <= prefetch_ram_adr_valid;
-                    prefetch_ram_ack <= RAM_ACK;
-
                     dbg_prefetch_start <= '1';
                 end if;
                 
