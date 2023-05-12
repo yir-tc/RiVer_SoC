@@ -25,7 +25,9 @@ entity iprefetcher is
         IP_CURR_ID_SC   : out std_logic_vector(27 downto 0); -- address "id": address without offset
         IP_LINE_SC      : out std_logic_vector((WIDTH*32)-1 downto 0); -- instr if addr in fifo and transfer over
         
-        IP_TRANSFER_SC  : out std_logic -- true if prefetch FSM not in IDLE mode
+        IP_TRANSFER_SC  : out std_logic; -- true if prefetch FSM not in IDLE mode
+
+        P_RESET_TRANSFER : in std_logic
     );
 end entity;
 
@@ -34,7 +36,7 @@ architecture archi of iprefetcher is
 signal data : std_logic_vector((32*WIDTH)-1 downto 0);
 
 -- fsm
-type state is (idle, wait_mem, update, transfer);
+type state is (idle, wait_mem, update, transfer, reset);
 signal EP, EF : state; 
 signal dbg_st : std_logic_vector(1 downto 0);
 signal dbg_next_idle : std_logic;
@@ -45,7 +47,7 @@ begin
 IP_TRANSFER_SC <= '1' when not (EP = idle) and not(EP = transfer) else '0';
 IP_LINE_SC  <= data;
 
-fsm_transition : process(clk, reset_n)
+fsm_transition : process(clk, reset_n, P_RESET_TRANSFER)
 begin  
     if reset_n = '0' then 
         EP  <=  idle; 
@@ -92,23 +94,38 @@ begin
                     EF  <=  wait_mem; 
                 end if;
             end if;
-        when update =>      
+
+            if P_RESET_TRANSFER = '1' then
+                EF <= reset;
+            end if;
+        when update =>    
+            assert false report "update" severity note;  
             RAM_ADR_VALID <= '0';
 
             if RAM_ACK = '0' then 
                 EF <= transfer; 
                 IP_VALID_SC <=  '1';  
             elsif rising_edge(clk) then
-                EF <= update;
-                if cpt <= WIDTH then
+                if cpt < WIDTH + 1 then
                     data((32*(cpt))-1 downto (32*(cpt-1))) <= RAM_DATA;
                 else
                     report "prefetcher counter overflow" severity error;
                 end if;
                 cpt := cpt + 1;
             end if; 
+
+            if P_RESET_TRANSFER = '1' then
+                EF <= reset;
+            end if;
         when transfer =>
-            EF <= idle;
+            if rising_edge(clk) then
+                EF <= idle;
+            end if;
+        when reset =>
+            if RAM_ACK = '0' then
+                EF <= idle;
+                IP_VALID_SC <= '0';
+            end if;
     end case; 
 end process;
 
