@@ -172,7 +172,7 @@ buffer_POP     <= RAM_BUFFER_CACHE_POP;
 buffer_DATA_C <= DATA_SM;
 buffer_ADR_C <= ADR_SM;
 buffer_STORE_C <= STORE_SM;
-buffer_BYTE_SEL_BC <= SIZE_SM;
+buffer_BYTE_SEL_C <= SIZE_SM;
 
 
 process(clk,reset_n) is

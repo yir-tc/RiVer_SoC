@@ -41,7 +41,6 @@ int read_mem(int a) {
 }
 
 int write_mem(int a, int data, int byt_sel, int time) {
-    printf("write : %d %d\n",data,byt_sel);
     int addr1, addr2, addr3, addr4;
     int tmp = 0; 
     int mask = 0;

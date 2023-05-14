@@ -2,6 +2,13 @@
 .global _start
 
 _start:
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
+    nop
     addi x1,x0,12
     ori x1,x0,1953
 
