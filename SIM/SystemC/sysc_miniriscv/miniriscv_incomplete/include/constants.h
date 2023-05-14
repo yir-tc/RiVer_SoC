@@ -1,5 +1,0 @@
-#define START_ADRESS 0x10050
-#define DEC2EXE_SIZE 130
-#define EXE2MEM_SIZE 76
-#define IF2DEC_SIZE  64
-#define MEM2WBK_SIZE 38

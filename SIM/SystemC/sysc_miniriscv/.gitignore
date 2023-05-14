@@ -1,7 +1,0 @@
-Makefile.deps
-*.o
-.vscode
-reset
-app
-run.exe
-tf.vcd

@@ -1,3 +1,4 @@
+build/*
 *.o
 *alu_tb
 *shifter_tb
@@ -5,6 +6,7 @@
 *core_tb
 *core_cache_tb
 *tb_ram
+*tb_interface
 *.vcd
 *.txt
 *.text
