@@ -23,7 +23,7 @@ CC=gcc
 SW_DIR=../../SOFT
 TEST=$(SW_DIR)/TESTS/I/test_add.s
 LD_SCRIPT= -T $(SW_DIR)/kernel.ld
-RISC_FLAGS= -nostdlib $(LD_SCRIPT)
+RISC_FLAGS= -nostdlib $(LD_SCRIPT) -march=rv32im
 
 all: run warning
 
@@ -61,5 +61,5 @@ warning :
 	@echo You have to do : make TEST=pth_to_the_test/test_name
 	@echo
 clean:
-	rm $(BUILD)/* $(SIM_DIR)/* -f *.lst *.o *.cf core_tb *.vcd *.ghw *.out \
+	rm $(BUILD)/* $(SIM_DIR)/* -f *.lst *.o *.cf core_tb *.vcd *.ghw *.out kernel \
 	*.out.txt *.out.txt.s

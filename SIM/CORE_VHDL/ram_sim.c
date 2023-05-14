@@ -34,13 +34,14 @@ int read_mem(int a) {
     addr3 = (a >> 16) & 0xFF; 
     addr4 = (a >> 24) & 0xFF; 
     if(ram[addr1] && ram[addr1][addr2] && ram[addr1][addr2][addr3]) {
-        // printf("[read mem] : at @ %x data %x\n", adr, ram[addr1][addr2][addr3][addr4]);
+        printf("[read mem] : at @ %x data %x\n", adr, ram[addr1][addr2][addr3][addr4]);
         return ram[addr1][addr2][addr3][addr4];
     }
     return 0; 
 }
 
 int write_mem(int a, int data, int byt_sel, int time) {
+    printf("write : %d %d\n",data,byt_sel);
     int addr1, addr2, addr3, addr4;
     int tmp = 0; 
     int mask = 0;

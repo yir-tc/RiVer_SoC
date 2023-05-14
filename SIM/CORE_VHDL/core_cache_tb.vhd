@@ -115,6 +115,7 @@ signal D_RAM_ADR : std_logic_vector(31 downto 0);
 signal D_RAM_ADR_VALID          :  std_logic;
 
 signal D_RAM_ACK      :std_logic;
+signal D_RAM_ACK_temp :std_logic := '0'; --Utilisé pour synchro ça bien.
 signal D_RAM_DATA     :std_logic_vector(31 downto 0);
 
             --write
@@ -124,9 +125,9 @@ signal D_RAM_WRITE_DATA  : std_logic_vector(31 downto 0);
 signal D_RAM_BYTE_SEL  : std_logic_vector(3  downto 0);
 signal D_RAM_STORE       : std_logic;
 
-signal D_RAM_BUFFER_CACHE_POP : std_logic;
+signal D_RAM_BUFFER_CACHE_POP : std_logic := '0';
 
-
+signal transf_cpt_dcache: integer;
 
 component core
     port(
@@ -370,7 +371,6 @@ end process;
 
 reset_n <= '0', '1' after 6 ns;
 
-MCACHE_STALL_SM <= '0';
 
 PC_INIT <= std_logic_vector(to_signed(get_startpc(0), 32));
 
@@ -430,8 +430,14 @@ begin
     end if;
 end process; 
 
+--ram_ack_process : process(clk)
+--begin
+--    if rising_edge(clk) then
+--        D_RAM_ACK <= D_RAM_ACK_temp;
+--    end if;
+--end process;
 
-dcache_ram : process(clk, D_RAM_ADR_VALID, D_RAM_ADR, D_RAM_WRITE_ADR, D_RAM_WRITE_DATA, D_RAM_BYTE_SEL, D_RAM_STORE)
+dcache_ram : process(clk, D_RAM_ADR_VALID, D_RAM_ADR, D_RAM_WRITE_ADR, D_RAM_WRITE_DATA, D_RAM_BYTE_SEL, D_RAM_STORE,D_RAM_ACK_temp)
 variable read0      : integer; -- ignore 
 variable adr_u      : signed(D_RAM_ADR'range);
 variable adr_write  : signed(D_RAM_WRITE_ADR'range);
@@ -441,7 +447,7 @@ variable data_u     : signed(D_RAM_WRITE_DATA'range);
 variable data_int   : integer := 0;
 variable byt_sel_u  : unsigned(D_RAM_BYTE_SEL'range);
 variable byt_sel_i  : integer := 0;
-variable transf_cpt : integer;
+variable d_transf_cpt : integer;
 variable res_data   : integer;
 
 begin 
@@ -459,26 +465,34 @@ begin
         D_RAM_BUFFER_CACHE_POP <= '1' after RAM_LATENCY;
     end if;
 
-    if D_RAM_ADR_VALID <= '1' then
-        D_RAM_ACK <= '1' after RAM_LATENCY;
-        transf_cpt := 0;
+    if D_RAM_ADR_VALID = '1' then
+        D_RAM_ACK_temp <= '1' after RAM_LATENCY;
+        d_transf_cpt := 0;
     end if;
-
     if rising_edge(clk) then
         if D_RAM_BUFFER_CACHE_POP = '1' then
+            report "write data_int " & INTEGER'Image(data_int);
             read0 := write_mem(adr_write_int, data_int, byt_sel_i, dtime);
             D_RAM_BUFFER_CACHE_POP <= '0';
         end if;
 
-        if D_RAM_ACK = '1' then
+        if D_RAM_ACK_temp = '1' then
+            D_RAM_ACK <= '1';
             res_data := read_mem(adr_int);
-            transf_cpt := transf_cpt + 1;
+            D_RAM_DATA <= std_logic_vector(to_signed(res_data,32));
+            d_transf_cpt := d_transf_cpt + 1;
 
-            if transf_cpt = DCACHE_WIDTH + 1 then
-                D_RAM_ACK <= '0';
+            report "RAM send " & INTEGER'Image(res_data);
+
+            if d_transf_cpt = DCACHE_WIDTH + 1 then
+                D_RAM_ACK_temp <= '0';
             end if;
+        else
+            D_RAM_ACK <= '0';
         end if;
     end if;
+        transf_cpt_dcache <= d_transf_cpt;
+
 end process;
 
 end simu;

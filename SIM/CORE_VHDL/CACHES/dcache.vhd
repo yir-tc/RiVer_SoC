@@ -68,6 +68,9 @@ signal w1_data : ways_t;
 signal w1_data_valid : std_logic_vector((LINES - 1)  downto 0);
 
 signal lru_tab: std_logic_vector((LINES - 1) downto 0);
+signal lru_adr : std_logic_vector(6 downto 0);
+signal lru_val : std_logic;
+signal set_lru : std_logic;
 
 signal adr_tag      :   std_logic_vector(20 downto 0);
 signal adr_index    :   std_logic_vector(6 downto 0);
@@ -106,6 +109,11 @@ component buffer_cache
     );
 end component;
 
+signal last_write_adr : std_logic_vector(31 downto 0);
+signal last_write_data: std_logic_vector(31 downto 0);
+
+signal last_write_adr_t : std_logic_vector(31 downto 0);
+signal last_write_data_t: std_logic_vector(31 downto 0);
 
 signal buffer_PUSH, buffer_POP : std_logic;
 signal buffer_EMPTY, buffer_FULL : std_logic;
@@ -125,10 +133,25 @@ signal buffer_BYTE_SEL_BC : std_logic_vector(3 downto 0);
 
 
 --state machine
-type state is (idle, wait_mem);
+type state is (idle, wait_mem,update);
 signal EP, EF: state;
 
+signal etat : Integer;
 
+
+signal cpt: integer;
+signal inc_cpt : std_logic;
+signal reset_cpt : std_logic;
+
+
+--debug signals
+signal dbg_w0_tag_adr : std_logic_vector(20 downto 0);
+signal dbg_w1_tag_adr : std_logic_vector(20 downto 0);
+
+signal dbg_w0_valid_adr : std_logic;
+signal dbg_w1_valid_adr : std_logic;
+
+signal dbg_lru_adr      : std_logic;
 
 begin
 
@@ -152,6 +175,48 @@ buffer_STORE_C <= STORE_SM;
 buffer_BYTE_SEL_BC <= SIZE_SM;
 
 
+process(clk,reset_n) is
+begin
+    -- report "process write_addr";
+    if reset_n = '0' then
+        last_write_data <= x"00000000";
+        last_write_adr  <= x"00000000";
+    elsif rising_edge(clk) then
+        last_write_adr <= last_write_adr_t;
+        last_write_data<= last_write_data_t;
+    end if;
+end process;
+
+process(clk,reset_n) is
+begin
+    -- report "process cpt";
+    if reset_n = '0' then
+        cpt <= -1;
+    elsif rising_edge(clk) then
+        if reset_cpt = '1' then 
+            cpt <= 0;
+        elsif inc_cpt = '1' then
+            -- --report "incrementing cpt, value is " & INTEGER'Image(cpt);
+            cpt <= cpt + 1;
+        else 
+            cpt <= cpt;
+        end if;
+    end if;
+end process;
+
+lru_synchro : process(clk,reset_n) is
+begin
+    if reset_n = '0' then
+        for i in (LINES - 1) downto 0 loop
+            lru_tab(i) <= '0';
+        end loop;
+    elsif rising_edge(clk) then
+        if set_lru = '1' then
+            lru_tab(to_integer(unsigned(lru_adr))) <= lru_val;
+        end if;
+    end if;
+end process;
+
 -- read to ram
 
 -- align address then send it to the RAM
@@ -167,6 +232,14 @@ adr_tag     <=  ADR_SM(31 downto 11);
 adr_index   <=  ADR_SM(10 downto 4);
 adr_offset  <=  ADR_SM(3 downto 0);
 
+dbg_w0_tag_adr <= w0_tags(to_integer(unsigned(adr_index)));
+dbg_w1_tag_adr <= w1_tags(to_integer(unsigned(adr_index)));
+
+dbg_w0_valid_adr <= w0_data_valid(to_integer(unsigned(adr_index)));
+dbg_w1_valid_adr <= w1_data_valid(to_integer(unsigned(adr_index)));
+
+dbg_lru_adr      <= lru_tab(to_integer(unsigned(adr_index)));
+
 
 hit_w0 <= '1' when ( (w0_tags(to_integer(unsigned(adr_index))) = adr_tag) and (w0_data_valid(to_integer(unsigned(adr_index)))) = '1') else
 		  '0';
@@ -177,7 +250,7 @@ hit_w1 <= '1' when ( (w1_tags(to_integer(unsigned(adr_index))) = adr_tag) and (w
 hit <= hit_w0 or hit_w1;
 
 
-w0_data_res  <=  w0_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(adr_offset)));
+w0_data_res  <=  w0_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(adr_offset(3 downto 2))));
 
 --w0_data0(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "00" else 
 --                w0_data1(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "01" else
@@ -185,7 +258,7 @@ w0_data_res  <=  w0_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(ad
 --                w0_data3(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "11" else
 --                x"00000000";
 
-w1_data_res  <=  w1_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(adr_offset)));
+w1_data_res  <=  w1_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(adr_offset(3 downto 2))));
 
 
 --w1_data_res  <=  w1_data0(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "00" else 
@@ -200,90 +273,133 @@ data_res <= w0_data_res when hit_w0 = '1' else
 
 DATA_SC <= data_res;
 
-STALL_SC <= not hit when LOAD_SM = '1' else
+STALL_SC <= (not hit) when LOAD_SM = '1' else
 			buffer_FULL when STORE_SM = '1' else 
 			'0'; --value doesn't matter if the proc doesn't ask anything to the cache.
 
 fsm_transition : process(clk, reset_n)
 begin  
+    -- report "process fsm_transition";
     if reset_n = '0' then 
         EP  <=  idle; 
     elsif rising_edge(clk) then 
         EP  <=  EF; 
+
+
     end if; 
 end process; 
 
-
-fsm_output: process(clk, EP, hit,ADR_VALID_SM,RAM_ACK,RAM_DATA)
-variable cpt : integer;
+fsm_state_transition : process(clk,EP,LOAD_SM,ADR_VALID_SM,hit,cpt,inc_cpt)
 begin
-    RAM_ADR_VALID <=  '0';
-    buffer_PUSH <= '0';
-	case EP is
-		when idle =>
-			if LOAD_SM = '1' and ADR_VALID_SM = '1'then -- read
-				if (hit = '0') then
-
-                    cpt := 0;
-					EF <= wait_mem;
-
-                    RAM_ADR_VALID <=  '1';
-
-
-
-				else
-                    if hit_w0 = '1' then
-                        lru_tab(to_integer(unsigned(adr_index))) <= '1';
-                    else
-                        lru_tab(to_integer(unsigned(adr_index))) <= '0';
-                    end if;
-					EF <= idle;
-
-                    RAM_ADR_VALID <= '0';
-
-				end if;
-			elsif ADR_VALID_SM = '1' then --on a write, we always stay idle
-				EF <= idle;
-                buffer_PUSH <= '1';
-            else
-                EF <= idle;
-			end if;
-
-		when wait_mem =>
-            if RAM_ACK = '1' then
-
-                if lru_tab(to_integer(unsigned(adr_index))) = '0' then
-                    w0_data((to_integer(unsigned(adr_index))))(cpt) <= RAM_DATA;
-                else
-                    w1_data((to_integer(unsigned(adr_index))))(cpt) <= RAM_DATA;
-                end if;
-
-                cpt := cpt + 1;
-
-                if cpt < WIDTH then
+    -- report "process fsm_state_transition";
+    case EP is 
+        when idle =>
+            if LOAD_SM = '1' and ADR_VALID_SM = '1'then -- read
+                if (hit = '0') then
                     EF <= wait_mem;
                 else
                     EF <= idle;
-                    
-
-                    if lru_tab(to_integer(unsigned(adr_index))) = '0' then
-                        W0_tags(to_integer(unsigned(adr_index))) <= adr_tag;
-                        w0_data_valid(to_integer(unsigned(adr_index))) <= '1';
-                        lru_tab(to_integer(unsigned(adr_index))) <= '1';
-                    else
-                        W1_tags(to_integer(unsigned(adr_index))) <= adr_tag;
-                        w1_data_valid(to_integer(unsigned(adr_index))) <= '1';
-                        lru_tab(to_integer(unsigned(adr_index))) <= '0';
-                    end if;
-
                 end if;
+            else    --Write : no state change
+                EF <= idle;
+            end if;
+
+        when wait_mem =>
+            if cpt = (WIDTH - 1) and inc_cpt = '1' then
+                EF <= update;
             else
                 EF <= wait_mem;
             end if;
-
-
-	end case;
+        when update =>
+            EF <= idle;
+    end case;
 end process;
+
+fsm_output_bis : process(clk,reset_n,EP,LOAD_SM,STORE_SM,ADR_VALID_SM,ADR_SM,hit,hit_w0,DATA_SM,last_write_data,last_write_adr,RAM_DATA,RAM_ACK)
+begin
+
+    if reset_n = '0' then
+        -- report "reset data_valid";
+        for i in (LINES - 1) downto 0 loop
+            w0_data_valid(i) <= '0';
+            w1_data_valid(i) <= '0';
+        end loop;
+
+    else
+        -- report "process fsm_output";
+        RAM_ADR_VALID <= '0';
+        buffer_PUSH <= '0';
+        reset_cpt <= '0';
+        inc_cpt <= '0';
+        set_lru <= '0';
+
+        case EP is
+            when idle =>
+                etat <= 0;
+                if LOAD_SM = '1' and ADR_VALID_SM = '1' then --Read
+                    if (hit = '0') then --Miss
+                        reset_cpt <= '1';
+                        RAM_ADR_VALID <= '1';
+
+                    else                --Hit
+                        set_lru <= '1';
+                        if hit_w0 = '1' then
+                            lru_val <= '1';
+                        else
+                            lru_val <= '0';
+                        end if;
+                        lru_adr <= adr_index;
+                    end if;
+
+                elsif STORE_SM = '1' and ADR_VALID_SM = '1' then
+                    if (DATA_SM = last_write_data and ADR_SM = last_write_adr) then --temp : don't repeat the writes.
+
+                    else
+                        buffer_PUSH <= '1';
+                        last_write_data_t <= DATA_SM;
+                        last_write_adr_t <= ADR_SM;
+                    end if;
+                end if;
+            when wait_mem =>
+                etat <= 1;
+                -- --report "wait mem";
+                if RAM_ACK = '1' then
+                    
+                    -- report "wait_mem : cpt = " & INTEGER'Image(cpt);
+                    --write the value sent in the correct place.
+                    if lru_tab(to_integer(unsigned(adr_index))) = '0' then
+                        w0_data((to_integer(unsigned(adr_index))))(cpt) <= RAM_DATA;
+                    else
+                        w1_data((to_integer(unsigned(adr_index))))(cpt) <= RAM_DATA;
+                    end if;
+                    
+                    inc_cpt <= '1';
+                end if;
+
+            when update =>
+                -- report "state update";  
+                etat <= 2;
+
+                --set tag, validity bit and update the LRU value. 
+                if lru_tab(to_integer(unsigned(adr_index))) = '0' then
+                    W0_tags(to_integer(unsigned(adr_index))) <= adr_tag;
+                    w0_data_valid(to_integer(unsigned(adr_index))) <= '1';
+                    lru_val <= '1';
+                else
+                    W1_tags(to_integer(unsigned(adr_index))) <= adr_tag;
+                    w1_data_valid(to_integer(unsigned(adr_index))) <= '1';
+                    lru_val <= '0';
+                end if;
+                set_lru <= '1';
+                lru_adr <= adr_index;
+        end case;
+    end if;
+end process;
+
+
+ 
+
+
 
 
 
