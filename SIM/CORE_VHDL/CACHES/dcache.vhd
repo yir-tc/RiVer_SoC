@@ -352,12 +352,12 @@ begin
                 end if;
             when wait_mem =>
                 etat <= 1;
-                -- --report "wait mem";
+                -- report "wait mem";
                 if RAM_ACK = '1' then
                     
                     -- report "wait_mem : cpt = " & INTEGER'Image(cpt);
                     --write the value sent in the correct place.
-                    report "wait_mem writing " & INTEGER'Image(to_integer(unsigned(RAM_DATA))) & " into cache";
+                    --report "wait_mem writing " & INTEGER'Image(to_integer(unsigned(RAM_DATA))) & " into cache";
                     if lru_tab(to_integer(unsigned(adr_index))) = '0' then
                         w0_data((to_integer(unsigned(adr_index))))(cpt) <= RAM_DATA;
                     else
