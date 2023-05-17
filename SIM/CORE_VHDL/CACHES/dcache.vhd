@@ -252,20 +252,8 @@ hit <= hit_w0 or hit_w1;
 
 w0_data_res  <=  w0_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(adr_offset(3 downto 2))));
 
---w0_data0(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "00" else 
---                w0_data1(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "01" else
---                w0_data2(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "10" else
---                w0_data3(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "11" else
---                x"00000000";
-
 w1_data_res  <=  w1_data(to_integer(unsigned(adr_index)))(to_integer(unsigned(adr_offset(3 downto 2))));
 
-
---w1_data_res  <=  w1_data0(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "00" else 
-                --w1_data1(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "01" else
-                --w1_data2(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "10" else
-                --w1_data3(to_integer(unsigned(adr_index)))  when adr_offset(3 downto 2) = "11" else
-                --x"00000000";
 
 data_res <= w0_data_res when hit_w0 = '1' else
 			w1_data_res when hit_w1 = '1' else
@@ -358,6 +346,16 @@ begin
                         buffer_PUSH <= '1';
                         last_write_data_t <= DATA_SM;
                         last_write_adr_t <= ADR_SM;
+
+                        --invalidate line when there is a store. Not optimal, should be changed later
+                        if hit_w0 = '1' then
+                            report "Store - invalidate";
+                            w0_data_valid(to_integer(unsigned(adr_index))) <= '0';
+                        elsif hit_w1 = '1' then
+                            report "Store - invalidate";
+                            w1_data_valid(to_integer(unsigned(adr_index))) <= '0';
+                        end if;
+
                     end if;
                 end if;
             when wait_mem =>
@@ -367,6 +365,7 @@ begin
                     
                     -- report "wait_mem : cpt = " & INTEGER'Image(cpt);
                     --write the value sent in the correct place.
+                    report "wait_mem writing " & INTEGER'Image(to_integer(unsigned(RAM_DATA))) & " into cache";
                     if lru_tab(to_integer(unsigned(adr_index))) = '0' then
                         w0_data((to_integer(unsigned(adr_index))))(cpt) <= RAM_DATA;
                     else

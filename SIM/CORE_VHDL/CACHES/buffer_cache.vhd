@@ -49,7 +49,9 @@ begin
                 rd_index <= 0;
                 count <= 0;
             else 
-                if (PUSH='1' and f_full='0') then
+                if (PUSH='1' and POP='1') then
+                    count <= count;
+                elsif (PUSH='1' and f_full='0') then
                     count <= count + 1;
                 elsif (POP='1' and f_empty='0') then
                     count <= count - 1;

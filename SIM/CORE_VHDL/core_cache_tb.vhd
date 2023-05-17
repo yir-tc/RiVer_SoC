@@ -449,11 +449,14 @@ variable byt_sel_u  : unsigned(D_RAM_BYTE_SEL'range);
 variable byt_sel_i  : integer := 0;
 variable d_transf_cpt : integer;
 variable res_data   : integer;
+variable store_en_cours : integer := 0;
+variable store_en_cours_reset : integer := 0;
+
 
 begin 
     adr_u       := signed(D_RAM_ADR);
     adr_write   := signed(D_RAM_WRITE_ADR);
-    adr_int     := to_integer(adr_u);
+--    adr_int     := to_integer(adr_u);
     adr_write_int := to_integer(adr_write);
     data_u      := signed(D_RAM_WRITE_DATA);
     data_int    := to_integer(data_u);
@@ -461,28 +464,40 @@ begin
     byt_sel_i   := to_integer(byt_sel_u);
 
 
-    if D_RAM_STORE = '1' then
+    if D_RAM_STORE = '1' and store_en_cours = 0 then
+        report "Store waiting";
         D_RAM_BUFFER_CACHE_POP <= '1' after RAM_LATENCY;
+        store_en_cours := 1;
     end if;
 
     if D_RAM_ADR_VALID = '1' then
         D_RAM_ACK_temp <= '1' after RAM_LATENCY;
+        adr_int     := to_integer(adr_u);
         d_transf_cpt := 0;
     end if;
     if rising_edge(clk) then
+        if store_en_cours_reset = 1 then
+            report "store_en_cours_reset";
+            store_en_cours := 0;
+            store_en_cours_reset := 0;
+        end if;
         if D_RAM_BUFFER_CACHE_POP = '1' then
-            report "write data_int " & INTEGER'Image(data_int);
             read0 := write_mem(adr_write_int, data_int, byt_sel_i, dtime);
             D_RAM_BUFFER_CACHE_POP <= '0';
+            store_en_cours_reset := 1;
+            --store_en_cours := 0;
         end if;
 
         if D_RAM_ACK_temp = '1' then
             D_RAM_ACK <= '1';
             res_data := read_mem(adr_int);
             D_RAM_DATA <= std_logic_vector(to_signed(res_data,32));
-            d_transf_cpt := d_transf_cpt + 1;
 
-            report "RAM send " & INTEGER'Image(res_data);
+--            report "RAM send " & INTEGER'Image(res_data) & " from " & INTEGER'Image(adr_int);
+            
+            d_transf_cpt := d_transf_cpt + 1;
+            adr_int := adr_int + 4;
+
 
             if d_transf_cpt = DCACHE_WIDTH + 1 then
                 D_RAM_ACK_temp <= '0';
