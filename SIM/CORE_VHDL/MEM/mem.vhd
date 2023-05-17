@@ -14,6 +14,7 @@ entity mem is
         MCACHE_ADR_VALID_SM                 :   out std_logic;
         MCACHE_STORE_SM, MCACHE_LOAD_SM     :   out std_logic;
         byt_sel                             :   out std_logic_vector(3 downto 0);
+        MCACHE_PC                           :   out std_logic_vector(31 downto 0);
 
         -- Exe interface
         RES_RE, MEM_DATA_RE                 :   in  std_logic_vector(31 downto 0);
@@ -187,6 +188,7 @@ MCACHE_ADR_SM <= RES_RE;
 MCACHE_LOAD_SM <= LOAD_RE;
 MCACHE_STORE_SM <= STORE_RE;
 MCACHE_ADR_VALID_SM <= (not(EXE2MEM_EMPTY_SE) or not(mem_fifo_mult_inst)) and (STORE_RE or LOAD_RE);
+MCACHE_PC <= PC_EXE2MEM_RE;
 
 -- sign extend and load size 
 lb_sign     <=  MCACHE_RESULT_SM(31)    when    byt_sel_sm = "1000" else

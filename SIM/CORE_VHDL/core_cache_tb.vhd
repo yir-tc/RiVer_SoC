@@ -86,6 +86,7 @@ signal MCACHE_ADR_VALID_SM, MCACHE_STORE_SM, MCACHE_LOAD_SM : std_logic;
 signal MCACHE_DATA_SM : std_logic_vector(31 downto 0);
 signal MCACHE_ADR_SM : std_logic_vector(31 downto 0);
 signal byt_sel : std_logic_vector(3 downto 0);
+signal MCACHE_PC : std_logic_vector(31 downto 0);
 
 -- Icache interface
 signal IC_INST_SI : std_logic_vector(31 downto 0);
@@ -142,6 +143,8 @@ component core
         MCACHE_DATA_SM : out std_logic_vector(31 downto 0);
         MCACHE_ADR_SM : out std_logic_vector(31 downto 0);
         byt_sel : out std_logic_vector(3 downto 0);
+        MCACHE_PC  :   out std_logic_vector(31 downto 0);
+
 
         -- Icache interface
         IC_INST_SI : in std_logic_vector(31 downto 0);
@@ -192,6 +195,7 @@ component dcache
         LOAD_SM         :   in  std_logic;
         STORE_SM        :   in  std_logic;
         SIZE_SM         :   in  std_logic_vector(3 downto 0);
+        PC_SM           :   in std_logic_vector(31 downto 0);
 
         DATA_SC         :   out     std_logic_vector(31 downto 0);
         STALL_SC        :   out     std_logic;
@@ -262,6 +266,7 @@ core0 : core
         MCACHE_DATA_SM,
         MCACHE_ADR_SM,
         byt_sel, 
+        MCACHE_PC,
         -- Icache interface
         IC_INST_SI,
         IC_STALL_SI, 
@@ -306,6 +311,7 @@ dcache_inst: dcache
         MCACHE_LOAD_SM,
         MCACHE_STORE_SM,
         byt_sel,
+        MCACHE_PC,        
 
         MCACHE_RESULT_SM,
         MCACHE_STALL_SM,

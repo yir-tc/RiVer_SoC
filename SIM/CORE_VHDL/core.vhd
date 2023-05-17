@@ -18,6 +18,8 @@ entity core is
         MCACHE_DATA_SM : out std_logic_vector(31 downto 0);
         MCACHE_ADR_SM : out std_logic_vector(31 downto 0);
         byt_sel : out std_logic_vector(3 downto 0);
+        MCACHE_PC  :   out std_logic_vector(31 downto 0);
+
 
         -- Icache interface
         IC_INST_SI : in std_logic_vector(31 downto 0);
@@ -426,6 +428,8 @@ component mem
         MCACHE_ADR_SM, MCACHE_DATA_SM : out std_logic_vector(31 downto 0);
         MCACHE_ADR_VALID_SM, MCACHE_STORE_SM, MCACHE_LOAD_SM : out std_logic;
         byt_sel : out std_logic_vector(3 downto 0);
+        MCACHE_PC  :   out std_logic_vector(31 downto 0);
+
 
         -- Exe interface
         RES_RE, MEM_DATA_RE : in std_logic_vector(31 downto 0);
@@ -918,6 +922,7 @@ mem_i : mem
         MCACHE_STORE_SM     => MCACHE_STORE_SM, 
         MCACHE_LOAD_SM      => MCACHE_LOAD_SM,
         byt_sel             => byt_sel, 
+        MCACHE_PC           => MCACHE_PC,
 
         -- Exe interface
         RES_RE              => RES_RE,

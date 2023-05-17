@@ -14,6 +14,7 @@ entity dcache is
         LOAD_SM			:   in  std_logic;
         STORE_SM		:   in  std_logic;
         SIZE_SM         :   in  std_logic_vector(3 downto 0);
+        PC_SM           :   in std_logic_vector(31 downto 0);
 
         DATA_SC			:	out 	std_logic_vector(31 downto 0);
         STALL_SC		:	out 	std_logic;
@@ -109,12 +110,6 @@ component buffer_cache
     );
 end component;
 
-signal last_write_adr : std_logic_vector(31 downto 0);
-signal last_write_data: std_logic_vector(31 downto 0);
-
-signal last_write_adr_t : std_logic_vector(31 downto 0);
-signal last_write_data_t: std_logic_vector(31 downto 0);
-
 signal buffer_PUSH, buffer_POP : std_logic;
 signal buffer_EMPTY, buffer_FULL : std_logic;
 
@@ -138,6 +133,7 @@ signal EP, EF: state;
 
 signal etat : Integer;
 
+signal last_pc : std_logic_vector(31 downto 0);
 
 signal cpt: integer;
 signal inc_cpt : std_logic;
@@ -179,11 +175,9 @@ process(clk,reset_n) is
 begin
     -- report "process write_addr";
     if reset_n = '0' then
-        last_write_data <= x"00000000";
-        last_write_adr  <= x"00000000";
+        last_pc <= x"00000000";
     elsif rising_edge(clk) then
-        last_write_adr <= last_write_adr_t;
-        last_write_data<= last_write_data_t;
+        last_pc <= PC_SM;
     end if;
 end process;
 
@@ -303,7 +297,7 @@ begin
     end case;
 end process;
 
-fsm_output_bis : process(clk,reset_n,EP,LOAD_SM,STORE_SM,ADR_VALID_SM,ADR_SM,hit,hit_w0,DATA_SM,last_write_data,last_write_adr,RAM_DATA,RAM_ACK)
+fsm_output_bis : process(clk,reset_n,EP,LOAD_SM,STORE_SM,ADR_VALID_SM,ADR_SM,hit,hit_w0,DATA_SM,last_pc,RAM_DATA,RAM_ACK)
 begin
 
     if reset_n = '0' then
@@ -340,12 +334,10 @@ begin
                     end if;
 
                 elsif STORE_SM = '1' and ADR_VALID_SM = '1' then
-                    if (DATA_SM = last_write_data and ADR_SM = last_write_adr) then --temp : don't repeat the writes.
+                    if (PC_SM = last_pc) then   --don't do the same store twice in a row by mistake
 
                     else
                         buffer_PUSH <= '1';
-                        last_write_data_t <= DATA_SM;
-                        last_write_adr_t <= ADR_SM;
 
                         --invalidate line when there is a store. Not optimal, should be changed later
                         if hit_w0 = '1' then
