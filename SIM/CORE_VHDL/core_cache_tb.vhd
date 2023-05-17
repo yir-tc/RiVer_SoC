@@ -457,6 +457,8 @@ variable d_transf_cpt : integer;
 variable res_data   : integer;
 variable store_en_cours : integer := 0;
 variable store_en_cours_reset : integer := 0;
+variable load_en_cours : integer := 0;
+variable load_en_cours_reset : integer := 0;
 
 
 begin 
@@ -476,16 +478,23 @@ begin
         store_en_cours := 1;
     end if;
 
-    if D_RAM_ADR_VALID = '1' then
+    if D_RAM_ADR_VALID = '1'  and load_en_cours = 0 and rising_edge(clk)then
+        report "Load waiting";
         D_RAM_ACK_temp <= '1' after RAM_LATENCY;
         adr_int     := to_integer(adr_u);
         d_transf_cpt := 0;
+        load_en_cours := 1;
     end if;
     if rising_edge(clk) then
         if store_en_cours_reset = 1 then
             report "store_en_cours_reset";
             store_en_cours := 0;
             store_en_cours_reset := 0;
+        end if;
+        if load_en_cours_reset = 1 then
+            report "load_en_cours_reset";
+            load_en_cours := 0;
+            load_en_cours_reset := 0;
         end if;
         if D_RAM_BUFFER_CACHE_POP = '1' then
             read0 := write_mem(adr_write_int, data_int, byt_sel_i, dtime);
@@ -507,6 +516,7 @@ begin
 
             if d_transf_cpt = DCACHE_WIDTH + 1 then
                 D_RAM_ACK_temp <= '0';
+                load_en_cours_reset := 1;
             end if;
         else
             D_RAM_ACK <= '0';
